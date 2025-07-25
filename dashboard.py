@@ -1,43 +1,50 @@
 import streamlit as st
 import pandas as pd
 import requests
-import plotly.graph_objects as go
 
-API_KEY = "75730JF7ESBDGL7U"  # Your Alpha Vantage key
+# Set white background
+st.markdown("""
+<style>
+[data-testid="stAppViewContainer"] {
+  background-color: white !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# Function to get stock data
+st.set_page_config(page_title="Halal Stock Dashboard", layout="wide")
+st.title("📈 Halal Stock Dashboard")
+
+API_KEY = st.secrets["ALPHA_VANTAGE_KEY"]
+
+# List of symbols to analyze (North America)
+symbols = ["AAPL", "MSFT", "NVDA", "ADBE", "TSLA"]
+
+# List of banned symbols (banks, alcohol, gambling, etc.)
+banned = ["JPM", "KO", "PEP", "WFC", "LVS"]  # example banned symbols
+
+# Filter symbols for halal compliance
+filtered = [s for s in symbols if s not in banned]
+
 def get_stock_data(symbol):
-    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol={symbol}&apikey={API_KEY}&outputsize=compact"
+    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={API_KEY}"
     response = requests.get(url)
     data = response.json()
-    ts = data.get("Time Series (Daily)", {})
-    
-    if not ts:
+    if "Time Series (Daily)" in data:
+        df = pd.DataFrame(data["Time Series (Daily)"]).T
+        df = df.astype(float)
+        return df
+    else:
         return None
 
-    df = pd.DataFrame.from_dict(ts, orient='index')
-    df = df.astype(float)
-    df.index = pd.to_datetime(df.index)
-    df = df.sort_index()
-    return df
-
-# Streamlit layout
-st.title("📈 Halal Stock Line Chart Viewer")
-
-symbol = st.text_input("Enter Stock Symbol", "AAPL").upper()
-
-if symbol:
-    with st.spinner(f"Fetching data for {symbol}..."):
-        df = get_stock_data(symbol)
-        if df is not None:
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df.index, y=df["5. adjusted close"], mode="lines", name="Adj Close"))
-            fig.update_layout(
-                title=f"{symbol} - Adjusted Closing Price (Past 100 Days)",
-                xaxis_title="Date",
-                yaxis_title="Price (USD)",
-                height=500
-            )
-            st.plotly_chart(fig)
-        else:
-            st.error("Stock data not available or symbol is incorrect.")
+for symbol in filtered:
+    st.subheader(symbol)
+    data = get_stock_data(symbol)
+    if data is not None and "4. close" in data.columns:
+        st.line_chart(data["4. close"])
+    else:
+        st.warning("⚠️ Live data unavailable. Showing sample chart.")
+        sample = pd.DataFrame({
+            'Day': pd.date_range(end=pd.Timestamp.today(), periods=7),
+            'Price': [100, 101, 99, 98, 100, 102, 103]
+        }).set_index('Day')
+        st.line_chart(sample)
