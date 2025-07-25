@@ -1,6 +1,17 @@
 import streamlit as st
 import pandas as pd
 import requests
+st.markdown("""
+    <style>
+        body {
+            background-color: white !important;
+            color: black;
+        }
+        .stApp {
+            background-color: white !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 st.set_page_config(page_title="Halal Stock Dashboard", layout="wide")
 st.title("📈 Halal Stock Dashboard")
