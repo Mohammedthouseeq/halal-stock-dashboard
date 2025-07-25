@@ -1,10 +1,24 @@
 import streamlit as st
 import requests
 
+# White background style
 st.markdown("""
 <style>
 [data-testid="stAppViewContainer"] {
   background-color: white !important;
+  padding: 1rem 2rem;
+}
+@media (max-width: 600px) {
+  .stock-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .stock-logo {
+    margin-bottom: 0.5rem !important;
+  }
+  .stock-text {
+    font-size: 1.2rem !important;
+  }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -17,7 +31,6 @@ symbols = ["AAPL", "MSFT", "NVDA", "ADBE", "TSLA"]
 banned = ["JPM", "KO", "PEP", "WFC", "LVS"]  # banned stocks
 filtered = [s for s in symbols if s not in banned]
 
-# Map symbols to company domains for logos
 logo_domains = {
     "AAPL": "apple.com",
     "MSFT": "microsoft.com",
@@ -37,8 +50,10 @@ def fetch_current_quote(symbol):
 for symbol in filtered:
     price, change = fetch_current_quote(symbol)
     logo_url = f"https://logo.clearbit.com/{logo_domains[symbol]}"
-    col1, col2 = st.columns([1,4])
-    with col1:
-        st.image(logo_url, width=50)
-    with col2:
-        st.write(f"**{symbol}:** ${price} ({change})")
+    
+    cols = st.columns([1, 4])
+    with cols[0]:
+        st.image(logo_url, width=60)
+    with cols[1]:
+        st.markdown(f"<div style='font-size:1.4rem;'><b>{symbol}</b>: ${price} ({change})</div>", unsafe_allow_html=True)
+
