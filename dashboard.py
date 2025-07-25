@@ -1,24 +1,11 @@
 import streamlit as st
 import requests
 
-# White background style
 st.markdown("""
 <style>
 [data-testid="stAppViewContainer"] {
   background-color: white !important;
   padding: 1rem 2rem;
-}
-@media (max-width: 600px) {
-  .stock-row {
-    flex-direction: column !important;
-    align-items: flex-start !important;
-  }
-  .stock-logo {
-    margin-bottom: 0.5rem !important;
-  }
-  .stock-text {
-    font-size: 1.2rem !important;
-  }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -51,9 +38,10 @@ for symbol in filtered:
     price, change = fetch_current_quote(symbol)
     logo_url = f"https://logo.clearbit.com/{logo_domains[symbol]}"
     
-    cols = st.columns([1, 4])
+    cols = st.columns([1, 3])
     with cols[0]:
-        st.image(logo_url, width=60)
+        st.image(logo_url, width=50)
     with cols[1]:
-        st.markdown(f"<div style='font-size:1.4rem;'><b>{symbol}</b>: ${price} ({change})</div>", unsafe_allow_html=True)
-
+        st.markdown(f"### {symbol}")
+        st.markdown(f"**Price:** ${price}")
+        st.markdown(f"**Change:** {change}")
