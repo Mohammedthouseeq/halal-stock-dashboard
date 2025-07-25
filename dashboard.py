@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 
-# White background style
 st.markdown("""
 <style>
 [data-testid="stAppViewContainer"] {
@@ -11,10 +10,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Centered heading on top
 st.markdown("""
     <h1 style='text-align: center; color: black; margin-bottom: 2rem;'>
-        📈 Halal Stock Dashboard — Current Prices with Logos
+        📈 Halal Stock 
     </h1>
 """, unsafe_allow_html=True)
 
@@ -25,7 +23,7 @@ symbols = [
     "INTC", "CSCO", "ORCL", "CRM", "AMD", "QCOM", "AVGO"
 ]
 
-banned = ["JPM", "KO", "PEP", "WFC", "LVS"]  # banned stocks
+banned = ["JPM", "KO", "PEP", "WFC", "LVS"]
 filtered = [s for s in symbols if s not in banned]
 
 logo_domains = {
@@ -46,15 +44,20 @@ logo_domains = {
     "AVGO": "broadcom.com",
 }
 
+@st.cache_data(ttl=300)
 def fetch_current_quote(symbol):
     url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={API_KEY}"
-    response = requests.get(url)
-    data = response.json().get("Global Quote", {})
-    price = data.get("05. price", "N/A")
-    change_percent = data.get("10. change percent", "N/A")
-    return price, change_percent
+    try:
+        response = requests.get(url, timeout=10)
+        data = response.json().get("Global Quote", {})
+        price = data.get("05. price")
+        change_percent = data.get("10. change percent")
+        if price is None or change_percent is None:
+            return None, None
+        return price, change_percent
+    except Exception:
+        return None, None
 
-# Display all stocks in columns (4 per row)
 cols_per_row = 4
 rows = (len(filtered) + cols_per_row - 1) // cols_per_row
 
@@ -65,10 +68,14 @@ for row in range(rows):
         if idx >= len(filtered):
             break
         symbol = filtered[idx]
-        price, change = fetch_current_quote(symbol)
+        with st.spinner(f"Loading {symbol}..."):
+            price, change = fetch_current_quote(symbol)
         logo_url = f"https://logo.clearbit.com/{logo_domains[symbol]}"
         with cols[i]:
             st.image(logo_url, width=70)
             st.markdown(f"### {symbol}")
-            st.markdown(f"**Price:** ${price}")
-            st.markdown(f"**Change:** {change}")
+            if price and change:
+                st.markdown(f"**Price:** ${price}")
+                st.markdown(f"**Change:** {change}")
+            else:
+                st.markdown("*Price data not available.*")
