@@ -1,6 +1,8 @@
 import streamlit as st
 import requests
 import time
+from datetime import datetime, timedelta
+import json
 
 st.markdown("""
 <style>
@@ -53,13 +55,97 @@ logo_domains = {
     "AVGO": "broadcom.com",
 }
 
-@st.cache_data(ttl=300)
+# Rate limiting configuration
+DAILY_LIMIT = 500
+MINUTE_LIMIT = 5
+ACTIVE_START_HOUR = 6  # 6 AM
+ACTIVE_END_HOUR = 21   # 9 PM
+ACTIVE_HOURS = ACTIVE_END_HOUR - ACTIVE_START_HOUR  # 15 hours (6 AM to 9 PM)
+
+def is_within_active_hours():
+    """Check if current time is within active trading hours (6 AM - 9 PM)"""
+    current_hour = datetime.now().hour
+    return ACTIVE_START_HOUR <= current_hour < ACTIVE_END_HOUR
+
+def get_daily_usage_key():
+    """Get key for daily usage tracking"""
+    return f"daily_usage_{datetime.now().strftime('%Y-%m-%d')}"
+
+def get_minute_usage_key():
+    """Get key for minute usage tracking"""
+    return f"minute_usage_{datetime.now().strftime('%Y-%m-%d_%H:%M')}"
+
+def check_rate_limits():
+    """Check if we can make API requests without exceeding limits"""
+    # First check if we're within active hours
+    if not is_within_active_hours():
+        return False
+    
+    daily_key = get_daily_usage_key()
+    minute_key = get_minute_usage_key()
+    
+    daily_usage = st.session_state.get(daily_key, 0)
+    minute_usage = st.session_state.get(minute_key, 0)
+    
+    return daily_usage < DAILY_LIMIT and minute_usage < MINUTE_LIMIT
+
+def increment_usage():
+    """Increment API usage counters"""
+    daily_key = get_daily_usage_key()
+    minute_key = get_minute_usage_key()
+    
+    st.session_state[daily_key] = st.session_state.get(daily_key, 0) + 1
+    st.session_state[minute_key] = st.session_state.get(minute_key, 0) + 1
+
+def get_optimal_refresh_interval():
+    """Calculate optimal refresh interval based on active hours (6 AM - 9 PM)"""
+    stocks_count = len(filtered)
+    
+    # Calculate how many times we can refresh all stocks during active hours (15 hours)
+    max_refreshes_per_active_period = DAILY_LIMIT // stocks_count
+    
+    # Distribute refreshes evenly across 15 active hours (6 AM to 9 PM)
+    active_seconds = ACTIVE_HOURS * 3600  # 15 hours in seconds
+    
+    if max_refreshes_per_active_period <= 1:
+        return active_seconds  # Once per active period
+    else:
+        # Calculate interval to distribute refreshes evenly
+        interval = active_seconds // max_refreshes_per_active_period
+        # Minimum 10 minutes between refreshes to avoid over-refreshing
+        return max(interval, 600)
+
+# Calculate optimal caching duration
+OPTIMAL_CACHE_TTL = get_optimal_refresh_interval()
+
+@st.cache_data(ttl=OPTIMAL_CACHE_TTL)
 def fetch_current_quote(symbol):
     url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={API_KEY}"
     
     try:
+        # Check rate limits before making request
+        if not check_rate_limits():
+            if not is_within_active_hours():
+                current_hour = datetime.now().hour
+                if current_hour < ACTIVE_START_HOUR:
+                    next_active = f"{ACTIVE_START_HOUR:02d}:00"
+                    return None, None, f"Markets closed. Trading hours: 6 AM - 9 PM. Next open: {next_active}"
+                else:
+                    return None, None, f"Markets closed. Trading hours: 6 AM - 9 PM. Opens tomorrow at 6 AM"
+            
+            daily_usage = st.session_state.get(get_daily_usage_key(), 0)
+            minute_usage = st.session_state.get(get_minute_usage_key(), 0)
+            
+            if daily_usage >= DAILY_LIMIT:
+                return None, None, f"Daily limit reached ({daily_usage}/{DAILY_LIMIT}). Resets at midnight."
+            if minute_usage >= MINUTE_LIMIT:
+                return None, None, f"Minute limit reached ({minute_usage}/{MINUTE_LIMIT}). Wait 1 minute."
+        
         response = requests.get(url, timeout=15)
-        response.raise_for_status()  # Raises an HTTPError for bad responses
+        response.raise_for_status()
+        
+        # Increment usage counter after successful request
+        increment_usage()
         
         data = response.json()
         
@@ -69,11 +155,9 @@ def fetch_current_quote(symbol):
         
         # Check for API error messages
         if "Error Message" in data:
-            st.error(f"API Error for {symbol}: {data['Error Message']}")
             return None, None, data.get("Error Message", "Unknown error")
         
         if "Note" in data:
-            st.warning(f"API Note for {symbol}: {data['Note']}")
             return None, None, data.get("Note", "Rate limit or other issue")
         
         # Extract quote data
@@ -86,7 +170,7 @@ def fetch_current_quote(symbol):
         change_percent = quote_data.get("10. change percent")
         
         if price is None or change_percent is None:
-            # Try alternative field names (API sometimes changes field names)
+            # Try alternative field names
             price = quote_data.get("price") or quote_data.get("current_price")
             change_percent = quote_data.get("change_percent") or quote_data.get("percent_change")
         
@@ -103,28 +187,85 @@ def fetch_current_quote(symbol):
     except Exception as e:
         return None, None, f"Unexpected error: {str(e)}"
 
+# Display rate limit status and trading hours
+st.sidebar.markdown("## 📊 API Usage Status")
+
+# Show trading hours status
+current_hour = datetime.now().hour
+is_active = is_within_active_hours()
+
+if is_active:
+    st.sidebar.success(f"🟢 **MARKET OPEN** ({current_hour:02d}:00)")
+    st.sidebar.write(f"**Trading Hours:** 6 AM - 9 PM")
+else:
+    if current_hour < ACTIVE_START_HOUR:
+        next_open_time = f"Today at {ACTIVE_START_HOUR:02d}:00"
+    else:
+        next_open_time = f"Tomorrow at {ACTIVE_START_HOUR:02d}:00"
+    st.sidebar.error(f"🔴 **MARKET CLOSED** ({current_hour:02d}:00)")
+    st.sidebar.write(f"**Next Open:** {next_open_time}")
+
+daily_usage = st.session_state.get(get_daily_usage_key(), 0)
+minute_usage = st.session_state.get(get_minute_usage_key(), 0)
+
+st.sidebar.progress(daily_usage / DAILY_LIMIT)
+st.sidebar.write(f"**Daily:** {daily_usage}/{DAILY_LIMIT} requests")
+st.sidebar.progress(minute_usage / MINUTE_LIMIT if minute_usage <= MINUTE_LIMIT else 1.0)
+st.sidebar.write(f"**This Minute:** {minute_usage}/{MINUTE_LIMIT} requests")
+
+# Show optimal refresh schedule
+stocks_count = len(filtered)
+max_refreshes = DAILY_LIMIT // stocks_count
+st.sidebar.write(f"**Stocks:** {stocks_count}")
+st.sidebar.write(f"**Max Refreshes (6AM-9PM):** {max_refreshes}")
+st.sidebar.write(f"**Cache Duration:** {OPTIMAL_CACHE_TTL // 60} minutes")
+
+# Reset usage button (for testing)
+if st.sidebar.button("🔄 Reset Usage Counters"):
+    for key in list(st.session_state.keys()):
+        if key.startswith('daily_usage_') or key.startswith('minute_usage_'):
+            del st.session_state[key]
+    st.sidebar.success("Usage counters reset!")
+
 # Add debug toggle
 if st.checkbox("🔧 Debug Mode (Show API responses)"):
     st.session_state.debug_mode = True
 else:
     st.session_state.debug_mode = False
 
-# Add refresh button
-if st.button("🔄 Refresh All Prices"):
-    st.cache_data.clear()
-    st.rerun()
+# Smart refresh button - only if within limits and active hours
+can_refresh = check_rate_limits() and is_within_active_hours()
+remaining_daily = DAILY_LIMIT - daily_usage
+remaining_stocks = remaining_daily // len(filtered) if remaining_daily > 0 else 0
 
-# Test API connection first
-st.write("🔍 Testing API connection...")
-test_price, test_change, test_error = fetch_current_quote("AAPL")
-if test_error:
-    st.error(f"❌ API Connection Test Failed: {test_error}")
-    st.info("💡 Common solutions:")
-    st.info("1. Check if your Alpha Vantage API key is valid")
-    st.info("2. You might have exceeded the API rate limit (5 requests/minute for free tier)")
-    st.info("3. Try refreshing the page in a few minutes")
+if not is_within_active_hours():
+    current_hour = datetime.now().hour
+    if current_hour < ACTIVE_START_HOUR:
+        st.warning(f"🕕 Markets closed. Trading starts at 6:00 AM")
+    else:
+        st.warning(f"🕘 Markets closed. Trading ended at 9:00 PM. Opens tomorrow at 6:00 AM")
+elif can_refresh and remaining_stocks > 0:
+    if st.button(f"🔄 Refresh All Prices ({remaining_stocks} refreshes left today)"):
+        st.cache_data.clear()
+        st.rerun()
 else:
-    st.success("✅ API Connection Test Successful")
+    st.warning(f"⚠️ Cannot refresh: Daily limit would be exceeded. {remaining_daily} requests remaining.")
+
+# Load stocks with intelligent batching
+if is_within_active_hours():
+    st.write("📈 **Loading Stock Prices...**")
+    
+    # Show next refresh time
+    next_refresh = datetime.now() + timedelta(seconds=OPTIMAL_CACHE_TTL)
+    st.info(f"ℹ️ **Auto-refresh:** Every {OPTIMAL_CACHE_TTL // 60} minutes | Next refresh: {next_refresh.strftime('%H:%M')}")
+else:
+    current_hour = datetime.now().hour
+    if current_hour < ACTIVE_START_HOUR:
+        st.info(f"🕕 **Markets Open in:** {ACTIVE_START_HOUR - current_hour} hours (6:00 AM)")
+    else:
+        hours_until_open = (24 - current_hour) + ACTIVE_START_HOUR
+        st.info(f"🕘 **Markets Open in:** {hours_until_open} hours (Tomorrow 6:00 AM)")
+    st.write("📊 **Showing Last Available Prices**")
 
 cols_per_row = 4
 rows = (len(filtered) + cols_per_row - 1) // cols_per_row
@@ -143,13 +284,21 @@ for row in range(rows):
             try:
                 st.image(logo_url, width=70)
             except:
-                st.write("🏢")  # Fallback emoji if logo fails
+                st.write("🏢")
             
             st.markdown(f"### {symbol}")
             
-            # Add small delay between requests to avoid rate limiting
+            # Check if we can make this request
+            if not is_within_active_hours():
+                st.info("🕘 Markets closed")
+                continue
+            elif not check_rate_limits():
+                st.warning("⚠️ Rate limit reached")
+                continue
+            
+            # Add delay between requests to respect minute limits
             if idx > 0:
-                time.sleep(0.2)
+                time.sleep(12)  # 5 requests per minute = 12 second intervals
             
             with st.spinner(f"Loading {symbol}..."):
                 price, change, error = fetch_current_quote(symbol)
@@ -157,7 +306,6 @@ for row in range(rows):
             if error:
                 st.error(f"❌ {error}")
             elif price and change:
-                # Format price to 2 decimal places
                 try:
                     price_float = float(price)
                     change_clean = change.replace('%', '').strip()
@@ -177,6 +325,15 @@ for row in range(rows):
             else:
                 st.markdown("*Price data not available.*")
 
-# Add footer with rate limit info
+# Footer with rate limit strategy
 st.markdown("---")
-st.info("ℹ️ **Rate Limits:** Alpha Vantage free tier allows 5 requests per minute and 500 per day. If prices aren't loading, you may have hit the rate limit.")
+st.info(f"""
+🎯 **Smart Rate Limiting Strategy:**
+- **Trading Hours:** 6:00 AM - 9:00 PM (15 hours active)
+- **Daily Limit:** 500 requests distributed across trading hours only
+- **Current Schedule:** Refresh every {OPTIMAL_CACHE_TTL // 60} minutes during market hours
+- **Stocks per Refresh:** {len(filtered)} stocks
+- **Daily Refreshes:** Up to {DAILY_LIMIT // len(filtered)} times (during trading hours)
+- **Minute Limit:** Maximum 5 requests per minute with 12-second intervals
+- **Inactive Hours:** No API calls made between 9 PM - 6 AM (saves quota)
+""")
