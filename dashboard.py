@@ -4,11 +4,30 @@ import time
 from datetime import datetime, timedelta
 import json
 
+# Google AdSense verification and setup
+st.markdown("""
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3453452956428749"
+     crossorigin="anonymous"></script>
+""", unsafe_allow_html=True)
+
 st.markdown("""
 <style>
 [data-testid="stAppViewContainer"] {
   background-color: white !important;
   padding: 1rem 2rem;
+}
+.ad-container {
+  margin: 20px 0;
+  padding: 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  background-color: #f9f9f9;
+  text-align: center;
+}
+.ad-label {
+  font-size: 10px;
+  color: #666;
+  margin-bottom: 5px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -19,15 +38,55 @@ st.markdown("""
     </h1>
 """, unsafe_allow_html=True)
 
+# Test if HTML is working - Simple header ad placeholder
+st.info("📢 **HEADER AD SPACE** - Google AdSense will appear here (Client: ca-pub-3453452956428749)")
+st.markdown("---")
+
 # Check if API key exists
 try:
     API_KEY = st.secrets["ALPHA_VANTAGE_KEY"]
+    # Google AdSense configuration - using your verified client ID
+    ADSENSE_CLIENT_ID = "ca-pub-3453452956428749"
+    ADSENSE_SLOT_HEADER = st.secrets.get("ADSENSE_SLOT_HEADER", "")  # Header ad slot
+    ADSENSE_SLOT_SIDEBAR = st.secrets.get("ADSENSE_SLOT_SIDEBAR", "")  # Sidebar ad slot
+    ADSENSE_SLOT_FOOTER = st.secrets.get("ADSENSE_SLOT_FOOTER", "")  # Footer ad slot
+    
     if not API_KEY:
         st.error("⚠️ Alpha Vantage API key not found in secrets!")
         st.stop()
 except Exception as e:
     st.error(f"⚠️ Error accessing API key: {e}")
     st.stop()
+
+def display_adsense_ad(slot_id, ad_format="auto", style="display:block"):
+    """Display Google AdSense ad"""
+    if slot_id:
+        ad_html = f"""
+        <div class="ad-container">
+            <div class="ad-label">Advertisement</div>
+            <ins class="adsbygoogle"
+                 style="{style}"
+                 data-ad-client="{ADSENSE_CLIENT_ID}"
+                 data-ad-slot="{slot_id}"
+                 data-ad-format="{ad_format}"></ins>
+            <script>
+                 (adsbygoogle = window.adsbygoogle || []).push({{}});
+            </script>
+        </div>
+        """
+        st.markdown(ad_html, unsafe_allow_html=True)
+    else:
+        # Placeholder for development - shows where ads will appear
+        st.markdown(f"""
+        <div class="ad-container">
+            <div class="ad-label">Advertisement</div>
+            <div style="padding: 20px; background-color: #f0f0f0; color: #666;">
+                📢 Google AdSense Ad Space ({ad_format})<br>
+                <small>Client ID: {ADSENSE_CLIENT_ID}</small><br>
+                <small>Add slot ID to secrets to activate</small>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 symbols = [
     "AAPL", "MSFT", "NVDA", "ADBE", "TSLA", "GOOGL", "AMZN", "META",
@@ -190,6 +249,10 @@ def fetch_current_quote(symbol):
 # Display rate limit status and trading hours
 st.sidebar.markdown("## 📊 API Usage Status")
 
+# Simple sidebar ad placeholder
+st.sidebar.info("📢 **SIDEBAR AD** - Google AdSense (300x250)")
+st.sidebar.markdown("---")
+
 # Show trading hours status
 current_hour = datetime.now().hour
 is_active = is_within_active_hours()
@@ -270,6 +333,9 @@ else:
 cols_per_row = 4
 rows = (len(filtered) + cols_per_row - 1) // cols_per_row
 
+# Add mid-content advertisement after every 8 stocks
+stocks_processed = 0
+
 for row in range(rows):
     cols = st.columns(cols_per_row)
     for i in range(cols_per_row):
@@ -277,6 +343,7 @@ for row in range(rows):
         if idx >= len(filtered):
             break
         symbol = filtered[idx]
+        stocks_processed += 1
         
         with cols[i]:
             # Show logo
@@ -296,7 +363,7 @@ for row in range(rows):
                 st.warning("⚠️ Rate limit reached")
                 continue
             
-            # Add delay between requests to respect minute limits
+            # Add small delay between requests to respect minute limits
             if idx > 0:
                 time.sleep(12)  # 5 requests per minute = 12 second intervals
             
@@ -324,9 +391,19 @@ for row in range(rows):
                     st.markdown(f"**Change:** {change}")
             else:
                 st.markdown("*Price data not available.*")
+    
+    # Add mid-content ad after every 8 stocks
+    if stocks_processed % 8 == 0 and stocks_processed < len(filtered):
+        st.markdown("---")
+        st.warning("📢 **MID-CONTENT AD** - Google AdSense Rectangle (336x280) - Appears after every 8 stocks")
+        st.markdown("---")
 
 # Footer with rate limit strategy
 st.markdown("---")
+
+# Simple footer ad placeholder
+st.success("📢 **FOOTER AD SPACE** - Google AdSense Leaderboard (728x90) - Client: ca-pub-3453452956428749")
+
 st.info(f"""
 🎯 **Smart Rate Limiting Strategy:**
 - **Trading Hours:** 6:00 AM - 9:00 PM (15 hours active)
@@ -337,3 +414,15 @@ st.info(f"""
 - **Minute Limit:** Maximum 5 requests per minute with 12-second intervals
 - **Inactive Hours:** No API calls made between 9 PM - 6 AM (saves quota)
 """)
+
+# Additional monetization footer
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: #666; font-size: 12px; margin-top: 20px;'>
+    💼 <strong>Interested in Halal Investment Services?</strong><br>
+    <a href="#" style="color: #1f77b4;">Islamic Banking Partners</a> | 
+    <a href="#" style="color: #1f77b4;">Halal-Certified Brokers</a> | 
+    <a href="#" style="color: #1f77b4;">Sharia-Compliant ETFs</a><br>
+    <small>Affiliate partnerships help keep this service free</small>
+</div>
+""", unsafe_allow_html=True)
